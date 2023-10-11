@@ -1,0 +1,83 @@
+
+---
+- hosts: docker
+  remote_user: gaiser
+  become: true
+  vars_prompt:
+    - name: restart_nginx
+      prompt: "Хотите перезапустить Nginx? (yes/no)"
+      private: no
+  tasks:
+  - name: install prerequisites for Docker repository
+    become: yes
+    ansible.builtin.apt:
+      pkg:
+        - ca-certificates
+        - curl
+        - gnupg2
+        - lsb-release
+
+  - name: add docker apt key
+    become: yes
+    apt_key:
+      url: https://download.docker.com/linux/ubuntu/gpg
+      state: present
+
+  - name: add docker apt repo
+    become: yes
+    apt_repository:
+      repo: "deb [arch=amd64] https://download.docker.com/linux/{{ ansible_distribution | lower }} {{ ansible_distribution_release }} stable"
+      state: present
+      update_cache: yes
+
+  - name: install docker and its dependencies
+    become: yes
+    apt:
+      pkg:
+        - docker-ce
+        - docker-buildx-plugin
+        - docker-compose-plugin
+      state: present
+
+  - name: start and enable docker daemon
+    become: yes
+    service:
+      name: docker
+      state: started
+      enabled: yes
+
+  - name: create new directory php
+    file:
+      path: /docker-project/images/php
+      state: directory
+
+  - name: create new directiry www
+    file:
+      path: /docker-project/www
+      state: directory
+
+  - name: copy file from one directory to other on the Remote Machine
+    copy:
+      src: "{{ item }}"
+      dest: /docker-project
+    with_fileglob:
+    - "/docker-project/*"
+
+  - name: copy file from one directory to other on the Remote Machine PHP
+    copy:
+      src: /docker-project/www/index.php
+      dest: /docker-project/www/index.php
+
+  - name: copy file from one directory to other on the Remote Machine DOCKERFILE
+    copy:
+      src: "{{ item  }}"
+      dest: /docker-project/images/php
+    with_fileglob:
+    - "/docker-project/images/php/*"
+
+  - name: Docker Compose starts
+    shell: cd /docker-project && docker compose up -d
+
+  - name: Restart Nginx
+    when: restart_nginx == "yes"
+    shell: docker exec nginx nginx -s reload
